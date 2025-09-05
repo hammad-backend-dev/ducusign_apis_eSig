@@ -1,5 +1,6 @@
 <?php
 defined('BASEPATH') or exit('No direct script access allowed');
+$config['composer_autoload'] = FCPATH . 'vendor/autoload.php';
 
 /*
 |--------------------------------------------------------------------------
@@ -25,7 +26,7 @@ defined('BASEPATH') or exit('No direct script access allowed');
 */
 // $config['base_url'] = 'https://buzzwaretech.com/hammad_khan/docusign_apis/';
 //  public string $baseURL = 'https://buzzwaretech.com/hammad_khan/docusign_apis/';
-$config['base_url'] = 'http://localhost:8080';
+$config['base_url'] = 'http://localhost:8000';
 // $config['base_url'] = 'http://137.184.111.69/docusign_apis/';
 
 /*
@@ -141,7 +142,7 @@ $config['subclass_prefix'] = 'MY_';
 | Note: This will NOT disable or override the CodeIgniter-specific
 |	autoloading (application/config/autoload.php)
 */
-$config['composer_autoload'] = FALSE;
+// $config['composer_autoload'] = FALSE;
 
 /*
 |--------------------------------------------------------------------------

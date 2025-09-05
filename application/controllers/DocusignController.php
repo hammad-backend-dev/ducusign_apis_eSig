@@ -1,6 +1,8 @@
 <?php
 defined('BASEPATH') or exit('No direct script access allowed');
 
+use GuzzleHttp\Client;
+
 class DocusignController extends CI_Controller
 {
     protected $docusignService;
@@ -46,16 +48,95 @@ class DocusignController extends CI_Controller
         }
     }
 
+
+    // public function createTemplate()
+    // {
+    //     try {
+    //         $accessToken = $this->getAccessToken();
+
+    //         $documentBase64 = trim($this->input->post('document'));
+    //         $coverDocBase64 = trim($this->input->post('cover_document'));
+
+    //         // Check if Base64 is provided
+    //         if (empty($documentBase64)) {
+    //             echo json_encode([
+    //                 'success' => 0,
+    //                 'message' => 'Document upload failed',
+    //                 'data'    => null
+    //             ]);
+    //             return;
+    //         }
+
+    //         // Merge cover document if it exists
+    //         if (!empty($coverDocBase64)) {
+    //             $documentBase64 = $this->mergeBase64PDFsAPI($documentBase64, $coverDocBase64);
+    //         }
+
+    //         // Decode Base64 to binary for MIME detection
+    //         $documentBinary = base64_decode($documentBase64, true);
+    //         if ($documentBinary === false) {
+    //             echo json_encode([
+    //                 'success' => 0,
+    //                 'message' => 'Invalid Base64 string',
+    //                 'data'    => null
+    //             ]);
+    //             return;
+    //         }
+
+    //         // Detect MIME type
+    //         $finfo = new finfo(FILEINFO_MIME_TYPE);
+    //         $mimeType = $finfo->buffer($documentBinary);
+
+    //         $extensions = [
+    //             'application/pdf' => 'pdf',
+    //             'application/msword' => 'doc',
+    //             'application/vnd.openxmlformats-officedocument.wordprocessingml.document' => 'docx',
+    //             'application/zip' => 'zip',
+    //             'image/png' => 'png',
+    //             'image/jpeg' => 'jpg',
+    //         ];
+
+    //         $extension = $extensions[$mimeType] ?? 'bin';
+    //         $fileName = 'document_' . time() . '.' . $extension;
+
+    //         $returnUrl = $this->input->post('returnUrl');
+    //         $docId     = $this->input->post('attorneyId');
+
+    //         // Send merged document to Docusign
+    //         $result = $this->docusignService->createTemplateAndReturnSenderView($accessToken, [
+    //             'documentBase64' => $documentBase64,
+    //             'fileName'       => $fileName,
+    //             'returnUrl'      => $returnUrl
+    //         ]);
+
+    //         $this->docusignService->notifyDocumentStatus($docId, true);
+
+    //         echo json_encode([
+    //             'success' => 1,
+    //             'message' => 'Template created',
+    //             'data'    => $result
+    //         ]);
+    //     } catch (Exception $e) {
+    //         $this->docusignService->notifyDocumentStatus(null, false, $e->getMessage());
+    //         echo json_encode([
+    //             'success' => 0,
+    //             'message' => 'Error: ' . $e->getMessage(),
+    //             'data'    => null
+    //         ]);
+    //     }
+    // }
+
+
     public function createTemplate()
     {
         try {
             $accessToken = $this->getAccessToken();
 
             $documentBase64 = trim($this->input->post('document'));
+            $coverDocBase64 = trim($this->input->post('cover_document'));
 
             // Check if Base64 is provided
             if (empty($documentBase64)) {
-                // $this->docusignService->notifyDocumentStatus(null, false, 'Document missing');
                 echo json_encode([
                     'success' => 0,
                     'message' => 'Document upload failed',
@@ -64,7 +145,12 @@ class DocusignController extends CI_Controller
                 return;
             }
 
-            // Decode Base64 to binary
+            // Merge cover document if it exists
+            if (!empty($coverDocBase64)) {
+                $documentBase64 = $this->mergeBase64PDFsAPI($documentBase64, $coverDocBase64);
+            }
+
+            // Decode Base64 to binary for MIME detection
             $documentBinary = base64_decode($documentBase64, true);
             if ($documentBinary === false) {
                 echo json_encode([
@@ -75,11 +161,10 @@ class DocusignController extends CI_Controller
                 return;
             }
 
-            // Detect MIME type from binary
+            // Detect MIME type
             $finfo = new finfo(FILEINFO_MIME_TYPE);
             $mimeType = $finfo->buffer($documentBinary);
 
-            // Map MIME type to file extension
             $extensions = [
                 'application/pdf' => 'pdf',
                 'application/msword' => 'doc',
@@ -92,10 +177,10 @@ class DocusignController extends CI_Controller
             $extension = $extensions[$mimeType] ?? 'bin';
             $fileName = 'document_' . time() . '.' . $extension;
 
-            $returnUrl      = $this->input->post('returnUrl');
-            $docId  = $this->input->post('attorneyId');
+            $returnUrl = $this->input->post('returnUrl');
+            $docId     = $this->input->post('attorneyId');
 
-
+            // Send merged document to Docusign
             $result = $this->docusignService->createTemplateAndReturnSenderView($accessToken, [
                 'documentBase64' => $documentBase64,
                 'fileName'       => $fileName,
@@ -104,12 +189,149 @@ class DocusignController extends CI_Controller
 
             $this->docusignService->notifyDocumentStatus($docId, true);
 
-            echo json_encode(['success' => 1, 'message' => 'Template created', 'data' => $result]);
+            echo json_encode([
+                'success' => 1,
+                'message' => 'Template created',
+                'data'    => $result
+            ]);
         } catch (Exception $e) {
             $this->docusignService->notifyDocumentStatus(null, false, $e->getMessage());
-            echo json_encode(['success' => 0, 'message' => 'Error: ' . $e->getMessage(), 'data' => null]);
+            echo json_encode([
+                'success' => 0,
+                'message' => 'Error: ' . $e->getMessage(),
+                'data'    => null
+            ]);
         }
     }
+
+    /**
+     * Merge two Base64 PDFs using PDF.co
+     */
+    private function mergeBase64PDFsAPI($base64Doc1, $base64Doc2)
+    {
+        $client = new \GuzzleHttp\Client();
+        $apiKey = 'hammadkhanhk152@gmail.com_TSsmuPD4haZPEJZUjGBx1my4ho88RsdwMghM8C1U6OfIXaDtcRuKaRmd4xyfFfgj';
+
+        // 1️⃣ Upload both Base64 PDFs to get URLs
+        $url1 = $this->uploadBase64PDF($base64Doc1, $client, $apiKey);
+        $url2 = $this->uploadBase64PDF($base64Doc2, $client, $apiKey);
+
+        // 2️⃣ Merge PDFs using URLs
+        $response = $client->post('https://api.pdf.co/v1/pdf/merge', [
+            'headers' => [
+                'x-api-key' => $apiKey,
+                'Content-Type' => 'application/json'
+            ],
+            'json' => [
+                'url' => "$url1,$url2",
+                'name' => 'merged_document.pdf',
+                'async' => false
+            ]
+        ]);
+
+        $result = json_decode($response->getBody(), true);
+
+        if (!isset($result['url'])) {
+            throw new \Exception('PDF merge failed: ' . ($result['message'] ?? 'Unknown error'));
+        }
+
+        // Download merged PDF and return Base64
+        $mergedPdfBinary = file_get_contents($result['url']);
+        return base64_encode($mergedPdfBinary);
+    }
+
+    /**
+     * Upload a Base64 PDF to PDF.co and get the file URL
+     */
+    private function uploadBase64PDF($base64Pdf, $client, $apiKey)
+    {
+        $response = $client->post('https://api.pdf.co/v1/file/upload/base64', [
+            'headers' => [
+                'x-api-key' => $apiKey,
+                'Content-Type' => 'application/json'
+            ],
+            'json' => [
+                'file' => $base64Pdf
+            ]
+        ]);
+
+        $result = json_decode($response->getBody(), true);
+
+        if (!isset($result['url'])) {
+            throw new \Exception('Base64 PDF upload failed: ' . ($result['message'] ?? 'Unknown error'));
+        }
+
+        return $result['url'];
+    }
+
+
+
+
+    // public function createTemplate()
+    // {
+    //     try {
+    //         $accessToken = $this->getAccessToken();
+
+    //         $documentBase64 = trim($this->input->post('document'));
+    //         $coverDocBase64 = trim($this->input->post('cover_document'));
+
+    //         // Check if Base64 is provided
+    //         if (empty($documentBase64)) {
+    //             // $this->docusignService->notifyDocumentStatus(null, false, 'Document missing');
+    //             echo json_encode([
+    //                 'success' => 0,
+    //                 'message' => 'Document upload failed',
+    //                 'data'    => null
+    //             ]);
+    //             return;
+    //         }
+
+    //         // Decode Base64 to binary
+    //         $documentBinary = base64_decode($documentBase64, true);
+    //         if ($documentBinary === false) {
+    //             echo json_encode([
+    //                 'success' => 0,
+    //                 'message' => 'Invalid Base64 string',
+    //                 'data'    => null
+    //             ]);
+    //             return;
+    //         }
+
+    //         // Detect MIME type from binary
+    //         $finfo = new finfo(FILEINFO_MIME_TYPE);
+    //         $mimeType = $finfo->buffer($documentBinary);
+
+    //         // Map MIME type to file extension
+    //         $extensions = [
+    //             'application/pdf' => 'pdf',
+    //             'application/msword' => 'doc',
+    //             'application/vnd.openxmlformats-officedocument.wordprocessingml.document' => 'docx',
+    //             'application/zip' => 'zip',
+    //             'image/png' => 'png',
+    //             'image/jpeg' => 'jpg',
+    //         ];
+
+    //         $extension = $extensions[$mimeType] ?? 'bin';
+    //         $fileName = 'document_' . time() . '.' . $extension;
+
+    //         $returnUrl      = $this->input->post('returnUrl');
+    //         $docId  = $this->input->post('attorneyId');
+
+
+    //         $result = $this->docusignService->createTemplateAndReturnSenderView($accessToken, [
+    //             'documentBase64' => $documentBase64,
+    //             'fileName'       => $fileName,
+    //             'returnUrl'      => $returnUrl
+    //         ]);
+
+    //         $this->docusignService->notifyDocumentStatus($docId, true);
+
+    //         echo json_encode(['success' => 1, 'message' => 'Template created', 'data' => $result]);
+    //     } catch (Exception $e) {
+    //         $this->docusignService->notifyDocumentStatus(null, false, $e->getMessage());
+    //         echo json_encode(['success' => 0, 'message' => 'Error: ' . $e->getMessage(), 'data' => null]);
+    //     }
+    // }
 
     public function createEnvelopeAndRecipientView()
     {
