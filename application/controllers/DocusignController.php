@@ -13,6 +13,14 @@ class DocusignController extends CI_Controller
         parent::__construct();
 
         $this->load->config('docusign');
+        $this->load->library('DocuSignMailer');
+        $this->docusignMailer = $this->docusignmailer;
+        $this->load->library('AgreementPdfGenerator');
+        $this->pdfGenerator = $this->agreementpdfgenerator;
+
+
+
+
         $this->docusignConfig = [
             'integration_key'       => $this->config->item('integration_key'),
             'user_id'               => $this->config->item('user_id'),
@@ -133,7 +141,6 @@ class DocusignController extends CI_Controller
             $accessToken = $this->getAccessToken();
 
             $documentBase64 = trim($this->input->post('document'));
-            $coverDocBase64 = trim($this->input->post('cover_document'));
 
             // Check if Base64 is provided
             if (empty($documentBase64)) {
@@ -143,11 +150,6 @@ class DocusignController extends CI_Controller
                     'data'    => null
                 ]);
                 return;
-            }
-
-            // Merge cover document if it exists
-            if (!empty($coverDocBase64)) {
-                $documentBase64 = $this->mergeBase64PDFsAPI($documentBase64, $coverDocBase64);
             }
 
             // Decode Base64 to binary for MIME detection
@@ -166,21 +168,21 @@ class DocusignController extends CI_Controller
             $mimeType = $finfo->buffer($documentBinary);
 
             $extensions = [
-                'application/pdf' => 'pdf',
+                'application/pdf'  => 'pdf',
                 'application/msword' => 'doc',
                 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' => 'docx',
-                'application/zip' => 'zip',
-                'image/png' => 'png',
-                'image/jpeg' => 'jpg',
+                'application/zip'  => 'zip',
+                'image/png'        => 'png',
+                'image/jpeg'       => 'jpg',
             ];
 
             $extension = $extensions[$mimeType] ?? 'bin';
-            $fileName = 'document_' . time() . '.' . $extension;
+            $fileName  = 'document_' . time() . '.' . $extension;
 
             $returnUrl = $this->input->post('returnUrl');
             $docId     = $this->input->post('attorneyId');
 
-            // Send merged document to Docusign
+            // Send document to Docusign
             $result = $this->docusignService->createTemplateAndReturnSenderView($accessToken, [
                 'documentBase64' => $documentBase64,
                 'fileName'       => $fileName,
@@ -333,30 +335,107 @@ class DocusignController extends CI_Controller
     //     }
     // }
 
+    // public function createEnvelopeAndRecipientView()
+    // {
+    //     try {
+    //         $accessToken = $this->getAccessToken();
+    //         $templateId  = $this->input->post('templateId');
+
+    //         $returnUrl   = $this->input->post('returnUrl');
+    //         $name        = $this->input->post('name') ?? 'Default Client';
+    //         $email       = $this->input->post('email') ?? 'client@example.com';
+    //         $doc_id = $this->input->post('doc_id') ?? '';
+    //         $attorney_email = $this->input->post('attorney_email') ?? "softwar.se152@gmail.com";
+    //         $otherData = json_decode($this->input->post('otherData'), true);
+
+
+
+    //         // pass your frontend data
+    //         $pdfPath = $this->pdfGenerator->generate($otherData, "Client Agreement");
+
+    //         // convert to base64 for DocuSign
+    //         $documentBase64 = base64_encode(file_get_contents($pdfPath));
+    //         print_r($documentBase64);
+    //         die;
+
+
+    //         if (!$templateId || !$returnUrl) {
+    //             echo json_encode(['success' => 0, 'message' => 'Missing templateId or returnUrl']);
+    //             return;
+    //         }
+
+    //         $envelope = $this->docusignService->createEnvelopeFromTemplate($accessToken, [
+    //             'templateId' => $templateId,
+    //             'roleName'   => 'Client',
+    //             'name'       => $name,
+    //             'email'      => $email,
+    //             'returnUrl'  => $returnUrl
+    //         ]);
+
+
+    //         $envelopeId = $envelope['envelopeId'] ?? null;
+    //         if (!$envelopeId) {
+    //             echo json_encode(['success' => 0, 'message' => 'Envelope creation failed', 'data' => $envelope]);
+    //             return;
+    //         }
+
+    //         $returnUrlWithParams = $returnUrl
+    //             . '?doc_id=' . urlencode($doc_id)
+    //             . '&envelopeId=' . urlencode($envelopeId)
+    //             . '&user_email=' . urlencode($email)
+    //             . '&attorney_email=' . urlencode($attorney_email);
+
+    //         $recipientView = $this->docusignService->createRecipientView($accessToken, [
+    //             'envelopeId' => $envelopeId,
+    //             'returnUrl'  => $returnUrlWithParams,
+    //             'name'       => $name,
+    //             'email'      => $email,
+    //         ]);
+    //         // $url =  $returnUrl . '?doc_id=' . $doc_id . '&envelopeId=' . $envelopeId;
+
+    //         echo json_encode([
+    //             'success' => 1,
+    //             // 'id' => $url,
+    //             'message' => 'Envelope and recipient view created',
+    //             'data'    => ['envelope' => $envelope, 'recipientView' => $recipientView]
+    //         ]);
+    //     } catch (Exception $e) {
+    //         echo json_encode(['success' => 0, 'message' => 'Error: ' . $e->getMessage()]);
+    //     }
+    // }
+
     public function createEnvelopeAndRecipientView()
     {
         try {
-            $accessToken = $this->getAccessToken();
-            $templateId  = $this->input->post('templateId');
+            $accessToken    = $this->getAccessToken();
+            $templateId     = $this->input->post('templateId');
+            $returnUrl      = $this->input->post('returnUrl');
+            $name           = $this->input->post('name') ?? 'Default Client';
+            $email          = $this->input->post('email') ?? 'client@example.com';
+            $doc_id         = $this->input->post('doc_id') ?? '';
+            $attorney_email = $this->input->post('attorney_email') ?? "softwar.se152@gmail.com";
+            $otherData      = json_decode($this->input->post('otherData'), true);
 
-            $returnUrl   = $this->input->post('returnUrl');
-            $name        = $this->input->post('name') ?? 'Default Client';
-            $email       = $this->input->post('email') ?? 'client@example.com';
-            $doc_id = $this->input->post('doc_id') ?? '';
+            // 1️⃣ Generate PDF as string
+            $pdfString = $this->pdfGenerator->generate($otherData, "Client Agreement", true);
+            $agreementBase64 = base64_encode($pdfString);
 
-            if (!$templateId || !$returnUrl) {
-                echo json_encode(['success' => 0, 'message' => 'Missing templateId or returnUrl']);
-                return;
-            }
+            // 2️⃣ Get template PDF (base64) from DocuSign
+            $templateBase64 = $this->docusignService->getTemplateDocumentBase64($templateId);
 
+            // 3️⃣ Merge both PDFs
+            $finalBase64 = $templateBase64
+                ? $this->mergeBase64PDFsAPI($templateBase64, $agreementBase64)
+                : $agreementBase64;
+
+            // 4️⃣ Create envelope with merged PDF
             $envelope = $this->docusignService->createEnvelopeFromTemplate($accessToken, [
-                'templateId' => $templateId,
-                'roleName'   => 'Client',
-                'name'       => $name,
-                'email'      => $email,
-                'returnUrl'  => $returnUrl
+                'name'           => $name,
+                'email'          => $email,
+                'roleName'       => 'Client',
+                'documentBase64' => $finalBase64,
+                'fileName'       => 'FinalAgreement.pdf'
             ]);
-
 
             $envelopeId = $envelope['envelopeId'] ?? null;
             if (!$envelopeId) {
@@ -364,22 +443,22 @@ class DocusignController extends CI_Controller
                 return;
             }
 
+            // 5️⃣ Recipient signing view
+            $returnUrlWithParams = $returnUrl
+                . '?doc_id=' . urlencode($doc_id)
+                . '&envelopeId=' . urlencode($envelopeId)
+                . '&user_email=' . urlencode($email)
+                . '&attorney_email=' . urlencode($attorney_email);
 
             $recipientView = $this->docusignService->createRecipientView($accessToken, [
                 'envelopeId' => $envelopeId,
-                // 'returnUrl'  => $returnUrl,
-                // 'returnUrl'  => $returnUrl . '?doc_id=' . $doc_id,
-                'returnUrl'  => $returnUrl . '?doc_id=' . $doc_id . '&envelopeId=' . $envelopeId,
+                'returnUrl'  => $returnUrlWithParams,
                 'name'       => $name,
                 'email'      => $email,
             ]);
-            $url =  $returnUrl . '?doc_id=' . $doc_id . '&envelopeId=' . $envelopeId;
-
-
 
             echo json_encode([
                 'success' => 1,
-                'id' => $url,
                 'message' => 'Envelope and recipient view created',
                 'data'    => ['envelope' => $envelope, 'recipientView' => $recipientView]
             ]);
@@ -388,45 +467,121 @@ class DocusignController extends CI_Controller
         }
     }
 
+
+
+
+
     public function signingCallback()
     {
-        $docId      = $this->input->get('doc_id');      // from your app
-        $envelopeId = $this->input->get('envelopeId');  // from docusign
-        // $accessToken = $this->getAccessToken();
+        $docId       = $this->input->get('doc_id');
+        $envelopeId  = $this->input->get('envelopeId');
+        $userEmail   = $this->input->get('user_email');
+        $attorneyEmail = $this->input->get('attorney_email');
+
 
         if (!$docId || !$envelopeId) {
-            $this->load->view('docusign/error', ['message' => 'Missing docId or envelopeId']);
+            $this->load->view('docusign/error', [
+                'message' => 'Missing docId or envelopeId',
+                'status'  => 'Unknown'
+            ]);
             return;
         }
-        $accessToken = $this->docusignService->createJWTToken();
 
-        // Check envelope status
-        $status = $this->docusignService->getEnvelopeStatus($accessToken, $envelopeId);
+        try {
+            $accessToken = $this->docusignService->createJWTToken();
+            $status      = $this->docusignService->getEnvelopeStatus($accessToken, $envelopeId);
 
-        if (!empty($status['status']) && strtolower($status['status']) === 'completed') {
-            //  Signed
-            $dataa = $this->docusignService->notifyEnvelopeStatus($docId, true);
-            echo "<pre>";
-            print_r($dataa);
-            echo "</pre>";
-            die;
-            $this->load->view('docusign/success', [
-                'message'    => 'Thank you, your document is signed!',
-                // 'docId'      => $docId,
-                // 'envelopeId' => $envelopeId,
-                'status'     => $status['status']
-            ]);
-        } else {
-            //  Not signed
-            $this->docusignService->notifyEnvelopeStatus($docId, false, $status['status'] ?? 'Unknown');
+
+            if (!empty($status['status']) && strtolower($status['status']) === 'completed') {
+                // Envelope signed
+                $this->docusignService->notifyEnvelopeStatus($docId, true);
+
+                // Fetch signed PDF and send email (in-memory)
+                try {
+                    $pdfData    = $this->docusignService->getSignedDocumentForEmail($accessToken, $envelopeId);
+
+
+                    $userEmailResult     = $this->docusignMailer->sendUserEmail($userEmail, $pdfData);
+                    // print_r($userEmailResult);
+                    // die;
+
+                    $attorneyEmailResult = $this->docusignMailer->sendAttorneyEmail($attorneyEmail, $pdfData);
+                    // echo "<pre>";
+                    // print_r($attorneyEmailResult);
+                    // echo "</pre>";
+                    // die;
+                } catch (Exception $e) {
+                    log_message('error', 'Email sending failed: ' . $e->getMessage());
+                }
+
+                // Load success view
+                $this->load->view('docusign/success', [
+                    'message' => 'Thank you, your document is signed!',
+                    'status'  => $status['status']
+                ]);
+            } else {
+                // Envelope not signed yet
+                $this->docusignService->notifyEnvelopeStatus($docId, false, $status['status'] ?? 'Unknown');
+
+                $this->load->view('docusign/error', [
+                    'message' => 'Document not signed yet.',
+                    'status'  => $status['status'] ?? 'Unknown'
+                ]);
+            }
+        } catch (Exception $e) {
+            // General failure
+            log_message('error', 'Signing callback failed: ' . $e->getMessage());
             $this->load->view('docusign/error', [
-                'message'    => 'Document not signed yet.',
-                // 'docId'      => $docId,
-                // 'envelopeId' => $envelopeId,
-                'status'     => $status['status'] ?? 'Unknown'
+                'message' => 'An error occurred while processing the envelope.',
+                'status'  => 'Error'
             ]);
         }
     }
+
+
+
+    // public function signingCallback()
+    // {
+    //     $this->output->set_content_type('application/json');
+
+    //     $docId      = $this->input->get('doc_id');
+    //     $envelopeId = $this->input->get('envelopeId');
+
+    //     if (!$docId || !$envelopeId) {
+    //         $this->output->set_output(json_encode([
+    //             'success' => 0,
+    //             'message' => 'Missing docId or envelopeId'
+    //         ]));
+    //         return;
+    //     }
+
+    //     $accessToken = $this->docusignService->createJWTToken();
+    //     $status = $this->docusignService->getEnvelopeStatus($accessToken, $envelopeId);
+
+    //     if (!empty($status['status']) && strtolower($status['status']) === 'completed') {
+    //         $pdfData    = $this->docusignService->getSignedDocument($accessToken, $envelopeId);
+
+    //         $res = $this->docusignService->sendCompletionEmail(
+    //             ["hammadkhanhk152@gmail.com", "softwar.se152@gmail.com"],
+    //             'Document Signed Successfully',
+    //             'Hello, your document has been signed and is attached.',
+    //             $pdfData
+    //         );
+
+    //         $this->output->set_output(json_encode([
+    //             'success' => 1,
+    //             'message' => 'Document signed and email attempted',
+    //             'status'  => $status['status'],
+    //             'email_response' => $res
+    //         ]));
+    //     } else {
+    //         $this->output->set_output(json_encode([
+    //             'success' => 0,
+    //             'message' => 'Document not signed yet',
+    //             'status'  => $status['status'] ?? 'Unknown'
+    //         ]));
+    //     }
+    // }
 
 
 
@@ -485,6 +640,7 @@ class DocusignController extends CI_Controller
             echo json_encode(['success' => 0, 'message' => 'Error: ' . $e->getMessage()]);
         }
     }
+
     public function getFreshSenderViewEndpoint()
     {
         try {
@@ -528,5 +684,21 @@ class DocusignController extends CI_Controller
         $this->output
             ->set_content_type('application/json')
             ->set_output(json_encode($response));
+    }
+
+    public function testEmail()
+    {
+        $this->load->library('email');
+
+        $this->email->from('info@duepro.com', 'DuePro System');
+        $this->email->to('softwar.se152@gmail.com');
+        $this->email->subject('Test GoDaddy SMTP');
+        $this->email->message('This is a test email from CodeIgniter using GoDaddy SMTP.');
+
+        if ($this->email->send()) {
+            echo 'Email sent successfully!';
+        } else {
+            echo $this->email->print_debugger();
+        }
     }
 }

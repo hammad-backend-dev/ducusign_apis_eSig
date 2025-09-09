@@ -117,20 +117,48 @@ class DocusignService
         return ['templateId' => $templateId, 'senderViewUrl' => $viewData['url'] ?? ''];
     }
 
+    // public function createEnvelopeFromTemplate($accessToken, $params)
+    // {
+    //     $accountId = $this->config['account_id'];
+    //     $url = "https://demo.docusign.net/restapi/v2.1/accounts/{$accountId}/envelopes";
+
+    //     $body = [
+    //         'templateId' => $params['templateId'],
+    //         'emailSubject' => 'Please sign document',
+    //         'templateRoles' => [[
+    //             'roleName' => $params['roleName'],
+    //             'name' => $params['name'] ?? 'Default Client',
+    //             'email' => $params['email'] ?? 'client@example.com',
+    //             'clientUserId' => '1234'
+    //         ]],
+    //         'status' => 'sent'
+    //     ];
+
+    //     $response = $this->sendCurlRequest($url, $accessToken, $body);
+    //     return json_decode($response, true);
+    // }
     public function createEnvelopeFromTemplate($accessToken, $params)
     {
         $accountId = $this->config['account_id'];
         $url = "https://demo.docusign.net/restapi/v2.1/accounts/{$accountId}/envelopes";
 
         $body = [
-            'templateId' => $params['templateId'],
             'emailSubject' => 'Please sign document',
-            'templateRoles' => [[
-                'roleName' => $params['roleName'],
-                'name' => $params['name'] ?? 'Default Client',
-                'email' => $params['email'] ?? 'client@example.com',
-                'clientUserId' => '1234'
+            'documents' => [[
+                'documentBase64' => $params['documentBase64'],
+                'name' => $params['fileName'] ?? 'Agreement.pdf',
+                'fileExtension' => pathinfo($params['fileName'] ?? 'Agreement.pdf', PATHINFO_EXTENSION),
+                'documentId' => '1'
             ]],
+            'recipients' => [
+                'signers' => [[
+                    'email' => $params['email'],
+                    'name' => $params['name'],
+                    'roleName' => $params['roleName'] ?? 'Client',
+                    'recipientId' => '1',
+                    'clientUserId' => '1234'
+                ]]
+            ],
             'status' => 'sent'
         ];
 
@@ -289,5 +317,108 @@ class DocusignService
         } catch (Exception $e) {
             return null; // Return null on error
         }
+    }
+
+
+    public function getSignedDocumentForEmail($accessToken, $envelopeId)
+    {
+        $accountId = $this->config['account_id'];
+        $url = $this->config['base_path'] . "/v2.1/accounts/{$accountId}/envelopes/{$envelopeId}/documents/combined";
+
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HTTPHEADER => [
+                "Authorization: Bearer {$accessToken}",
+                "Accept: application/pdf"
+            ]
+        ]);
+
+        $pdfData = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($httpCode === 200 && $pdfData) {
+            return $pdfData; // Return raw PDF binary
+        }
+
+        throw new Exception("Failed to download signed document. HTTP {$httpCode}");
+    }
+
+    public function sendCompletionEmail($recipients, $subject, $message, $pdfData)
+    {
+        $CI = &get_instance();
+        $CI->load->library('email');
+
+        $CI->email->from('no-reply@example.com', 'DocuSign System');
+        $CI->email->to($recipients);
+        $CI->email->subject($subject);
+        $CI->email->message($message);
+
+        // Attach PDF from memory
+        $CI->email->attach($pdfData, 'attachment', 'signed_document.pdf', 'application/pdf');
+
+        return $CI->email->send()
+            ? ['success' => true, 'sent_to' => $recipients]
+            : ['success' => false, 'error' => $CI->email->print_debugger()];
+    }
+
+    public function handleEnvelopeCompletion($docId, $envelopeId, $userEmail, $attorneyEmail)
+    {
+        $accessToken = $this->createJWTToken();
+        $status = $this->getEnvelopeStatus($accessToken, $envelopeId);
+
+        if (!empty($status['status']) && strtolower($status['status']) === 'completed') {
+            $pdfData = $this->getSignedDocument($accessToken, $envelopeId);
+            $recipients = array_filter([$userEmail, $attorneyEmail]);
+
+            $this->sendCompletionEmail(
+                $recipients,
+                'Signed Document Completed',
+                'Hello, please find the signed document attached.',
+                $pdfData
+            );
+
+            $this->notifyEnvelopeStatus($docId, true);
+
+            return ['success' => true, 'status' => 'completed', 'message' => 'Envelope completed and email sent.'];
+        }
+
+        $this->notifyEnvelopeStatus($docId, false, $status['status'] ?? 'Unknown');
+        return ['success' => false, 'status' => $status['status'] ?? 'unknown', 'message' => 'Envelope not completed yet.'];
+    }
+
+    /**
+     * Fetches a template's document as Base64
+     *
+     * @param string $accessToken
+     * @param string $templateId
+     * @param int    $documentId Optional: default 1
+     * @return string Base64 encoded PDF
+     * @throws RuntimeException
+     */
+    public function getTemplateDocumentBase64(string $templateId, int $documentId = 1): string
+    {
+        $accountId = $this->config['account_id'];
+        $url = "https://demo.docusign.net/restapi/v2.1/accounts/{$accountId}/templates/{$templateId}/documents/{$documentId}";
+
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HTTPHEADER => [
+                "Authorization: Bearer {$this->createJWTToken()}",
+                "Accept: application/pdf"
+            ]
+        ]);
+
+        $pdfData = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($httpCode !== 200 || !$pdfData) {
+            throw new RuntimeException("Failed to fetch template document. HTTP Code: {$httpCode}");
+        }
+
+        return base64_encode($pdfData);
     }
 }
