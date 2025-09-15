@@ -414,7 +414,23 @@ class DocusignController extends CI_Controller
             $email          = $this->input->post('email') ?? 'client@example.com';
             $doc_id         = $this->input->post('doc_id') ?? '';
             $attorney_email = $this->input->post('attorney_email') ?? "softwar.se152@gmail.com";
-            $otherData      = json_decode($this->input->post('otherData'), true);
+            // $otherData      = json_decode($this->input->post('otherData'), true);
+            $rawOtherData = $this->input->post('otherdata');
+
+            if (is_string($rawOtherData)) {
+                $otherData = json_decode($rawOtherData, true);
+            } elseif (is_array($rawOtherData)) {
+                $otherData = $rawOtherData;
+            } else {
+                $otherData = null;
+            }
+
+            if (!is_array($otherData)) {
+                show_error('Invalid otherdata');
+                return;
+            }
+
+
 
             // 1️⃣ Generate PDF as string
             $pdfString = $this->pdfGenerator->generate($otherData, "Client Agreement", true);
@@ -429,13 +445,24 @@ class DocusignController extends CI_Controller
                 : $agreementBase64;
 
             // 4️⃣ Create envelope with merged PDF
+            // $envelope = $this->docusignService->createEnvelopeFromTemplate($accessToken, [
+            //     'name'           => $name,
+            //     'email'          => $email,
+            //     'roleName'       => 'Client',
+            //     'documentBase64' => $finalBase64,
+            //     'fileName'       => 'FinalAgreement.pdf'
+            // ]);
+            // pass templateId and clientUserId (keep clientUserId consistent everywhere)
             $envelope = $this->docusignService->createEnvelopeFromTemplate($accessToken, [
-                'name'           => $name,
-                'email'          => $email,
-                'roleName'       => 'Client',
-                'documentBase64' => $finalBase64,
-                'fileName'       => 'FinalAgreement.pdf'
+                'templateId'      => $templateId,
+                'name'            => $name,
+                'email'           => $email,
+                'roleName'        => 'Client',
+                'documentBase64'  => $finalBase64,
+                'fileName'        => 'FinalAgreement.pdf',
+                'clientUserId'    => '1234'  // keep same as you use for recipient view
             ]);
+
 
             $envelopeId = $envelope['envelopeId'] ?? null;
             if (!$envelopeId) {

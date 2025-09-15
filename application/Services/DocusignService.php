@@ -137,34 +137,84 @@ class DocusignService
     //     $response = $this->sendCurlRequest($url, $accessToken, $body);
     //     return json_decode($response, true);
     // }
+    // public function createEnvelopeFromTemplate($accessToken, $params)
+    // {
+    //     $accountId = $this->config['account_id'];
+    //     $url = "https://demo.docusign.net/restapi/v2.1/accounts/{$accountId}/envelopes";
+
+    //     $body = [
+    //         'emailSubject' => 'Please sign document',
+    //         'documents' => [[
+    //             'documentBase64' => $params['documentBase64'],
+    //             'name' => $params['fileName'] ?? 'Agreement.pdf',
+    //             'fileExtension' => pathinfo($params['fileName'] ?? 'Agreement.pdf', PATHINFO_EXTENSION),
+    //             'documentId' => '1'
+    //         ]],
+    //         'recipients' => [
+    //             'signers' => [[
+    //                 'email' => $params['email'],
+    //                 'name' => $params['name'],
+    //                 'roleName' => $params['roleName'] ?? 'Client',
+    //                 'recipientId' => '1',
+    //                 'clientUserId' => '1234'
+    //             ]]
+    //         ],
+    //         'status' => 'sent'
+    //     ];
+
+    //     $response = $this->sendCurlRequest($url, $accessToken, $body);
+    //     return json_decode($response, true);
+    // }
     public function createEnvelopeFromTemplate($accessToken, $params)
     {
         $accountId = $this->config['account_id'];
         $url = "https://demo.docusign.net/restapi/v2.1/accounts/{$accountId}/envelopes";
 
-        $body = [
-            'emailSubject' => 'Please sign document',
-            'documents' => [[
-                'documentBase64' => $params['documentBase64'],
-                'name' => $params['fileName'] ?? 'Agreement.pdf',
-                'fileExtension' => pathinfo($params['fileName'] ?? 'Agreement.pdf', PATHINFO_EXTENSION),
-                'documentId' => '1'
-            ]],
-            'recipients' => [
-                'signers' => [[
-                    'email' => $params['email'],
-                    'name' => $params['name'],
-                    'roleName' => $params['roleName'] ?? 'Client',
-                    'recipientId' => '1',
-                    'clientUserId' => '1234'
-                ]]
-            ],
-            'status' => 'sent'
-        ];
-
+        // If a templateId is provided, build compositeTemplates so template tabs are applied
+        if (!empty($params['templateId'])) {
+            $body = [
+                'status' => 'sent',
+                'compositeTemplates' => [
+                    [
+                        'serverTemplates' => [
+                            [
+                                'sequence' => '1',
+                                'templateId' => $params['templateId']
+                            ]
+                        ],
+                        'inlineTemplates' => [
+                            [
+                                'sequence' => '1',
+                                'recipients' => [
+                                    'signers' => [
+                                        [
+                                            'email' => $params['email'],
+                                            'name' => $params['name'],
+                                            'roleName' => $params['roleName'] ?? 'Client',
+                                            'recipientId' => '1',
+                                            'clientUserId' => $params['clientUserId'] ?? '1234'
+                                        ]
+                                    ]
+                                ]
+                            ]
+                        ],
+                        'document' => [
+                            'documentBase64' => $params['documentBase64'],
+                            'name' => $params['fileName'] ?? 'Agreement.pdf',
+                            'fileExtension' => pathinfo($params['fileName'] ?? 'Agreement.pdf', PATHINFO_EXTENSION),
+                            // must match the template's documentId
+                            'documentId' => '1'
+                        ]
+                    ]
+                ]
+            ];
+        }
+        // print_r($body);
+        // exit;
         $response = $this->sendCurlRequest($url, $accessToken, $body);
         return json_decode($response, true);
     }
+
 
     public function createRecipientView($accessToken, $params)
     {

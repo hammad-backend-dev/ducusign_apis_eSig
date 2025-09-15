@@ -3,39 +3,80 @@ defined('BASEPATH') or exit('No direct script access allowed');
 
 class DocuSignMailer
 {
+    protected $endpoint = "https://us-central1-duepro-2cf60.cloudfunctions.net/emailwidgets/sendemail";
     protected $CI;
 
     public function __construct()
     {
-        $this->CI = &get_instance();
-        $this->CI->load->library('email');
+        $this->CI = &get_instance(); // CI instance for helper loading
+        $this->CI->load->helper('url');
     }
 
     /**
-     * Send email with PDF attachment
-     *
-     * @param array $recipients
-     * @param string $subject
-     * @param string $message
-     * @param string $pdfData
-     * @param string $attachmentName
-     * @return array
+     * Send email with PDF link
      */
     public function sendEmailWithPdf(array $recipients, string $subject, string $message, string $pdfData, string $attachmentName = 'signed_document.pdf')
     {
-        $this->CI->email->clear(true); // Clear previous email
-
-        $this->CI->email->from('info@duepro.com', 'DuePro DocuSign System');
-        $this->CI->email->to($recipients);
-        $this->CI->email->subject($subject);
-        $this->CI->email->message($message);
-        $this->CI->email->attach($pdfData, 'attachment', $attachmentName, 'application/pdf');
-
-        if ($this->CI->email->send()) {
-            return ['success' => true, 'sent_to' => $recipients];
+        // Ensure uploads folder exists
+        $uploadDir = FCPATH . 'uploads/';
+        if (!is_dir($uploadDir)) {
+            mkdir($uploadDir, 0777, true);
         }
 
-        return ['success' => false, 'error' => $this->CI->email->print_debugger()];
+        // Full file path
+        $filePath = $uploadDir . $attachmentName;
+
+        // Save PDF file
+        if (file_put_contents($filePath, $pdfData) === false) {
+            return ['success' => false, 'error' => 'Failed to save PDF file'];
+        }
+
+        // Public URL for file
+        $pdfUrl = base_url('uploads/' . $attachmentName);
+        // return $pdfUrl;
+
+        // Create button
+        $button = '<a href="' . $pdfUrl . '" 
+           style="display:inline-block;padding:10px 20px;
+                  background:#007bff;color:#fff;
+                  text-decoration:none;border-radius:5px;">
+           View Signed Document
+           </a>';
+
+        // Add to message
+        $message .= "<br><br>" . $button;
+        // print_r($message);
+
+        // Build payload for API
+        $payload = [
+            "email"       => $recipients[0],
+            "subject"     => $subject,
+            "message"     => $message,
+            "pdfUrl"      => $pdfUrl,
+            "pdfFileName" => $attachmentName
+        ];
+
+
+        // Send via CURL
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL            => $this->endpoint,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST           => true,
+            CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
+            CURLOPT_POSTFIELDS     => json_encode($payload),
+            CURLOPT_TIMEOUT        => 30,
+        ]);
+
+        $response = curl_exec($ch);
+        $error    = curl_error($ch);
+        curl_close($ch);
+
+        if ($error) {
+            return ['success' => false, 'error' => $error];
+        }
+
+        return ['success' => true, 'response' => $response];
     }
 
     /**
