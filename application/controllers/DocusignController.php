@@ -17,7 +17,12 @@ class DocusignController extends CI_Controller
         $this->docusignMailer = $this->docusignmailer;
         $this->load->library('AgreementPdfGenerator');
         $this->pdfGenerator = $this->agreementpdfgenerator;
+        // $mode = $CI->config->item('docusign_mode');
+        $mode = $this->config->item('docusign_mode');
 
+        $this->docusign_url = ($mode === 'production')
+            ? $this->config->item('docusign_production_url')
+            : $this->config->item('docusign_sandbox_url');
 
 
 
@@ -642,7 +647,7 @@ class DocusignController extends CI_Controller
 
             $accessToken = $this->getAccessToken();
             $accountId   = $this->docusignConfig['account_id'];
-            $url = "https://demo.docusign.net/restapi/v2.1/accounts/{$accountId}/envelopes/{$envelopeId}/documents/1";
+            $url = "{$this->docusign_url}/v2.1/accounts/{$accountId}/envelopes/{$envelopeId}/documents/1";
 
             $ch = curl_init($url);
             curl_setopt_array($ch, [
@@ -726,6 +731,40 @@ class DocusignController extends CI_Controller
             echo 'Email sent successfully!';
         } else {
             echo $this->email->print_debugger();
+        }
+    }
+    public function checkTemplate()
+    {
+        try {
+            $accessToken = $this->getAccessToken();
+            $templateId  = $this->input->post_get('templateId');
+
+            if (empty($templateId)) {
+                echo json_encode(['success' => 0, 'message' => 'templateId is required']);
+                return;
+            }
+
+            $result = $this->docusignService->checkTemplateExists($accessToken, $templateId);
+
+            if ($result) {
+                echo json_encode([
+                    'success' => 1,
+                    'message' => 'Template exists',
+                    'data'    => $result
+                ]);
+            } else {
+                echo json_encode([
+                    'success' => 0,
+                    'message' => 'Template not found',
+                    'data'    => null
+                ]);
+            }
+        } catch (Exception $e) {
+            echo json_encode([
+                'success' => 0,
+                'message' => 'Error: ' . $e->getMessage(),
+                'data'    => null
+            ]);
         }
     }
 }

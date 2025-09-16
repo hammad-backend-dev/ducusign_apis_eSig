@@ -29,6 +29,16 @@ $config['composer_autoload'] = FCPATH . 'vendor/autoload.php';
 $config['base_url'] = 'http://localhost:8000';
 // $config['base_url'] = 'http://137.184.111.69/docusign_apis/';
 
+// DocuSign API URLs
+$config['docusign_sandbox_url']   = 'https://demo.docusign.net/restapi';
+$config['docusign_production_url'] = 'https://www.docusign.net/restapi';
+
+// Default mode (sandbox | production)
+// $config['docusign_mode'] = 'production';
+$config['docusign_mode'] = 'sandbox';
+
+
+
 /*
 |--------------------------------------------------------------------------
 | Index File

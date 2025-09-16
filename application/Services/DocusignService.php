@@ -19,6 +19,12 @@ class DocusignService
             'auth_server'           => $CI->config->item('auth_server'),
             'scope'                 => $CI->config->item('scope'),
         ];
+        // $mode = $this->config->item('docusign_mode');
+        $mode = $CI->config->item('docusign_mode');
+
+        $this->docusign_url = ($mode === 'production')
+            ? $CI->config->item('docusign_production_url')
+            : $CI->config->item('docusign_sandbox_url');
     }
 
     public function createJWTToken()
@@ -89,7 +95,7 @@ class DocusignService
         }
 
         $accountId = $this->config['account_id'];
-        $url = "https://demo.docusign.net/restapi/v2.1/accounts/{$accountId}/templates";
+        $url = "{$this->docusign_url}/v2.1/accounts/{$accountId}/templates";
 
         $body = [
             'name' => 'Template - ' . date('YmdHis'),
@@ -106,11 +112,12 @@ class DocusignService
         ];
 
         $response = $this->sendCurlRequest($url, $accessToken, $body);
+        return $response;
         $templateResp = json_decode($response, true);
         if (empty($templateResp['templateId'])) throw new RuntimeException("Failed to create template: {$response}");
         $templateId = $templateResp['templateId'];
 
-        $viewUrl = "https://demo.docusign.net/restapi/v2.1/accounts/{$accountId}/templates/{$templateId}/views/edit";
+        $viewUrl = "{$this->docusign_url}/v2.1/accounts/{$accountId}/templates/{$templateId}/views/edit";
         $viewResp = $this->sendCurlRequest($viewUrl, $accessToken, ['returnUrl' => $data['returnUrl']]);
         $viewData = json_decode($viewResp, true);
 
@@ -120,7 +127,7 @@ class DocusignService
     // public function createEnvelopeFromTemplate($accessToken, $params)
     // {
     //     $accountId = $this->config['account_id'];
-    //     $url = "https://demo.docusign.net/restapi/v2.1/accounts/{$accountId}/envelopes";
+    //     $url = "{$this->docusign_url}/v2.1/accounts/{$accountId}/envelopes";
 
     //     $body = [
     //         'templateId' => $params['templateId'],
@@ -140,7 +147,7 @@ class DocusignService
     // public function createEnvelopeFromTemplate($accessToken, $params)
     // {
     //     $accountId = $this->config['account_id'];
-    //     $url = "https://demo.docusign.net/restapi/v2.1/accounts/{$accountId}/envelopes";
+    //     $url = "{$this->docusign_url}/v2.1/accounts/{$accountId}/envelopes";
 
     //     $body = [
     //         'emailSubject' => 'Please sign document',
@@ -168,7 +175,7 @@ class DocusignService
     public function createEnvelopeFromTemplate($accessToken, $params)
     {
         $accountId = $this->config['account_id'];
-        $url = "https://demo.docusign.net/restapi/v2.1/accounts/{$accountId}/envelopes";
+        $url = "{$this->docusign_url}/v2.1/accounts/{$accountId}/envelopes";
 
         // If a templateId is provided, build compositeTemplates so template tabs are applied
         if (!empty($params['templateId'])) {
@@ -219,7 +226,7 @@ class DocusignService
     public function createRecipientView($accessToken, $params)
     {
         $accountId = $this->config['account_id'];
-        $url = "https://demo.docusign.net/restapi/v2.1/accounts/{$accountId}/envelopes/{$params['envelopeId']}/views/recipient";
+        $url = "{$this->docusign_url}/v2.1/accounts/{$accountId}/envelopes/{$params['envelopeId']}/views/recipient";
 
         $body = [
             'returnUrl' => $params['returnUrl'],
@@ -336,7 +343,7 @@ class DocusignService
     public function getEnvelopeStatus($accessToken, $envelopeId)
     {
         $accountId = $this->config['account_id'];
-        $url = "https://demo.docusign.net/restapi/v2.1/accounts/{$accountId}/envelopes/{$envelopeId}";
+        $url = "{$this->docusign_url}/v2.1/accounts/{$accountId}/envelopes/{$envelopeId}";
 
         $response = $this->sendCurlRequest($url, $accessToken, null, 'GET');
         return json_decode($response, true);
@@ -350,7 +357,7 @@ class DocusignService
         try {
             $accountId = $this->config['account_id'];
 
-            $url = "https://demo.docusign.net/restapi/v2.1/accounts/{$accountId}/templates/{$templateId}/views/edit";
+            $url = "{$this->docusign_url}/v2.1/accounts/{$accountId}/templates/{$templateId}/views/edit";
 
             $body = [
                 'returnUrl' => $returnUrl
@@ -450,7 +457,7 @@ class DocusignService
     public function getTemplateDocumentBase64(string $templateId, int $documentId = 1): string
     {
         $accountId = $this->config['account_id'];
-        $url = "https://demo.docusign.net/restapi/v2.1/accounts/{$accountId}/templates/{$templateId}/documents/{$documentId}";
+        $url = "{$this->docusign_url}/v2.1/accounts/{$accountId}/templates/{$templateId}/documents/{$documentId}";
 
         $ch = curl_init($url);
         curl_setopt_array($ch, [
@@ -470,5 +477,20 @@ class DocusignService
         }
 
         return base64_encode($pdfData);
+    }
+    public function checkTemplateExists($accessToken, $templateId)
+    {
+        $accountId = $this->config['account_id'];
+        $url = "{$this->docusign_url}/v2.1/accounts/{$accountId}/templates/{$templateId}";
+
+        try {
+            $response = $this->sendCurlRequest($url, $accessToken, null, 'GET');
+            return json_decode($response, true); // template details if found
+        } catch (RuntimeException $e) {
+            if (strpos($e->getMessage(), '404') !== false) {
+                return null; // Template not found
+            }
+            throw $e; // rethrow other errors
+        }
     }
 }
