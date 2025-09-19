@@ -305,8 +305,9 @@ class DocusignService
         if (!$isSuccess && $errorMessage) {
             $payload['data']['errorMessage'] = $errorMessage;
         }
+        // $ch = curl_init('https://us-central1-freeme-6e63a.cloudfunctions.net/widgetsforusa/documents/update');
 
-        $ch = curl_init('https://us-central1-freeme-6e63a.cloudfunctions.net/widgetsforusa/documents/update');
+        $ch = curl_init('https://us-central1-duepro-2cf60.cloudfunctions.net/widgetsforusa/documents/update');
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_POST => true,
@@ -315,19 +316,21 @@ class DocusignService
         ]);
         curl_exec($ch);
         curl_close($ch);
+        return $isSuccess;
     }
     public function notifyEnvelopeStatus($docId, $isSuccess, $errorMessage = null)
     {
         $payload = [
-            'collection' => 'QuoteAlert',
+            'collection' => 'LawFirm',
             'docId'      => $docId,
-            'data'       => ['isEnvelopSign' => $isSuccess]
+            'data'       => ['isDocumentEdited' => $isSuccess]
         ];
         if (!$isSuccess && $errorMessage) {
             $payload['data']['errorMessage'] = $errorMessage;
         }
+        $ch = curl_init('https://us-central1-duepro-2cf60.cloudfunctions.net/widgetsforusa/documents/update');
 
-        $ch = curl_init('https://us-central1-freeme-6e63a.cloudfunctions.net/widgetsforusa/documents/update');
+        // $ch = curl_init('https://us-central1-freeme-6e63a.cloudfunctions.net/widgetsforusa/documents/update');
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_POST => true,
@@ -356,6 +359,7 @@ class DocusignService
     {
         try {
             $accountId = $this->config['account_id'];
+
 
             $url = "{$this->docusign_url}/v2.1/accounts/{$accountId}/templates/{$templateId}/views/edit";
 

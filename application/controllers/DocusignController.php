@@ -41,6 +41,31 @@ class DocusignController extends CI_Controller
         require_once APPPATH . 'Services/DocusignService.php';
         $this->docusignService = new DocusignService();
     }
+    public function notify()
+    {
+        $ch = curl_init('https://us-central1-duepro-2cf60.cloudfunctions.net/widgetsforusa/documents/update');
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST => true,
+            CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+            CURLOPT_POSTFIELDS => '{
+                "collection": "LawFirm",
+                "docId": "4F5644D8-7063-4E27-B7F9-7ECB68246EC9",
+                "data": {
+                    "isDocumentEdited": false
+                }
+            }'
+        ]);
+
+
+        $response = curl_exec($ch);
+        curl_close($ch);
+
+        // Return API response
+        return $this->output
+            ->set_content_type('application/json')
+            ->set_output($response);
+    }
 
     protected function getAccessToken()
     {
@@ -505,6 +530,9 @@ class DocusignController extends CI_Controller
 
     public function signingCallback()
     {
+        $params = $this->input->get(); // Fetch all GET parameters as an associative array
+        // print_r($params);
+        // die;
         $docId       = $this->input->get('doc_id');
         $envelopeId  = $this->input->get('envelopeId');
         $userEmail   = $this->input->get('user_email');
@@ -528,25 +556,14 @@ class DocusignController extends CI_Controller
                 // Envelope signed
                 $this->docusignService->notifyEnvelopeStatus($docId, true);
 
-                // Fetch signed PDF and send email (in-memory)
                 try {
-                    $pdfData    = $this->docusignService->getSignedDocumentForEmail($accessToken, $envelopeId);
-
-
-                    $userEmailResult     = $this->docusignMailer->sendUserEmail($userEmail, $pdfData);
-                    // print_r($userEmailResult);
-                    // die;
-
-                    $attorneyEmailResult = $this->docusignMailer->sendAttorneyEmail($attorneyEmail, $pdfData);
-                    // echo "<pre>";
-                    // print_r($attorneyEmailResult);
-                    // echo "</pre>";
-                    // die;
+                    $pdfData = $this->docusignService->getSignedDocumentForEmail($accessToken, $envelopeId);
+                    $this->docusignMailer->sendUserEmail($userEmail, $pdfData);
+                    $this->docusignMailer->sendAttorneyEmail($attorneyEmail, $pdfData);
                 } catch (Exception $e) {
                     log_message('error', 'Email sending failed: ' . $e->getMessage());
                 }
 
-                // Load success view
                 $this->load->view('docusign/success', [
                     'message' => 'Thank you, your document is signed!',
                     'status'  => $status['status']
@@ -561,13 +578,67 @@ class DocusignController extends CI_Controller
                 ]);
             }
         } catch (Exception $e) {
-            // General failure
             log_message('error', 'Signing callback failed: ' . $e->getMessage());
             $this->load->view('docusign/error', [
                 'message' => 'An error occurred while processing the envelope.',
                 'status'  => 'Error'
             ]);
         }
+
+        // try {
+        //     $accessToken = $this->docusignService->createJWTToken();
+        //     $status      = $this->docusignService->getEnvelopeStatus($accessToken, $envelopeId);
+        //     print_r($status);
+        //     die;
+
+
+
+        //     if (!empty($status['status']) && strtolower($status['status']) === 'completed') {
+        //         // Envelope signed
+        //         $success  = $this->docusignService->notifyEnvelopeStatus($docId, true);
+        //         print_r($success);
+        //         die;
+
+        //         // Fetch signed PDF and send email (in-memory)
+        //         try {
+        //             $pdfData    = $this->docusignService->getSignedDocumentForEmail($accessToken, $envelopeId);
+
+
+        //             $userEmailResult     = $this->docusignMailer->sendUserEmail($userEmail, $pdfData);
+        //             // print_r($userEmailResult);
+        //             // die;
+
+        //             $attorneyEmailResult = $this->docusignMailer->sendAttorneyEmail($attorneyEmail, $pdfData);
+        //             // echo "<pre>";
+        //             // print_r($attorneyEmailResult);
+        //             // echo "</pre>";
+        //             // die;
+        //         } catch (Exception $e) {
+        //             log_message('error', 'Email sending failed: ' . $e->getMessage());
+        //         }
+
+        //         // Load success view
+        //         $this->load->view('docusign/success', [
+        //             'message' => 'Thank you, your document is signed!',
+        //             'status'  => $status['status']
+        //         ]);
+        //     } else {
+        //         // Envelope not signed yet
+        //         $this->docusignService->notifyEnvelopeStatus($docId, false, $status['status'] ?? 'Unknown');
+
+        //         $this->load->view('docusign/error', [
+        //             'message' => 'Document not signed yet.',
+        //             'status'  => $status['status'] ?? 'Unknown'
+        //         ]);
+        //     }
+        // } catch (Exception $e) {
+        //     // General failure
+        //     log_message('error', 'Signing callback failed: ' . $e->getMessage());
+        //     $this->load->view('docusign/error', [
+        //         'message' => 'An error occurred while processing the envelope.',
+        //         'status'  => 'Error'
+        //     ]);
+        // }
     }
 
 
